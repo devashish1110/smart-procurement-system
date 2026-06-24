@@ -13,6 +13,7 @@ const Reports = () => {
   });
   const [reportData, setReportData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     loadReport();
@@ -21,8 +22,13 @@ const Reports = () => {
   const loadReport = async () => {
     try {
       setLoading(true);
+      setError('');
+      // Clear any previous report's data first - otherwise a failed fetch for
+      // one report type can leave stale data from a different report type on
+      // screen, rendered through the wrong report component.
+      setReportData(null);
       let response;
-      
+
       if (reportType === 'financial') {
         response = await reportsAPI.getFinancial(dateRange);
       } else if (reportType === 'inventory') {
@@ -32,10 +38,11 @@ const Reports = () => {
       } else if (reportType === 'procurement') {
         response = await reportsAPI.getProcurement(dateRange);
       }
-      
+
       setReportData(response.data);
-    } catch (error) {
-      console.error('Failed to load report:', error);
+    } catch (err) {
+      console.error('Failed to load report:', err);
+      setError('This report is not available yet. Try Financial or Inventory.');
     } finally {
       setLoading(false);
     }
@@ -112,6 +119,12 @@ const Reports = () => {
       {/* Report Content */}
       {loading ? (
         <Loading />
+      ) : error ? (
+        <div className="card">
+          <p style={{ textAlign: 'center', color: '#ef4444', padding: '40px' }}>
+            {error}
+          </p>
+        </div>
       ) : reportData ? (
         <>
           {reportType === 'financial' && <FinancialReport data={reportData} />}
