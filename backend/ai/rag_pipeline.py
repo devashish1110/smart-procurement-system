@@ -10,7 +10,7 @@ import logging
 from sqlalchemy.orm import Session
 
 from backend.ai.embeddings import get_embedding_generator
-from backend.models.database import Medicine, InventoryStock, Vendor, PurchaseOrder
+from backend.models.database import Medicine, InventoryStock, Vendor, PurchaseOrder, Appointment, Bill
 from backend.config.database import get_db_context
 
 logger = logging.getLogger(__name__)
@@ -89,6 +89,45 @@ class RAGPipeline:
                 "rating": vendor.rating
             })
         
+        # 3b. Add an inventory alert summary (counts, not just per-medicine stock)
+        from datetime import date, timedelta
+        low_stock_count = db.query(InventoryStock).filter(InventoryStock.status == 'low_stock').count()
+        expiring_count = db.query(InventoryStock).filter(
+            InventoryStock.expiry_date <= date.today() + timedelta(days=30),
+            InventoryStock.expiry_date >= date.today(),
+            InventoryStock.quantity_available > 0
+        ).count()
+        summary_doc = (
+            f"Inventory Alert Summary: {low_stock_count} medicines are currently low in stock "
+            f"(at or below reorder level) and {expiring_count} stock batches are expiring within 30 days."
+        )
+        documents.append(summary_doc)
+        metadata.append({"type": "inventory_summary", "low_stock_count": low_stock_count, "expiring_count": expiring_count})
+
+        # 3c. Add an appointments summary (today's count, pending POs)
+        todays_appointments = db.query(Appointment).filter(Appointment.appointment_date == date.today()).count()
+        appointment_doc = f"Appointment Summary: {todays_appointments} appointments are scheduled for today."
+        documents.append(appointment_doc)
+        metadata.append({"type": "appointment_summary", "today_count": todays_appointments})
+
+        pending_pos = db.query(PurchaseOrder).filter(PurchaseOrder.status.in_(['approved', 'ordered'])).count()
+        procurement_doc = f"Procurement Summary: {pending_pos} purchase orders are currently pending (approved or ordered, awaiting delivery)."
+        documents.append(procurement_doc)
+        metadata.append({"type": "procurement_summary", "pending_count": pending_pos})
+
+        # 3d. Add a billing summary (today's revenue, this month's revenue)
+        month_start = date.today().replace(day=1)
+        month_bills = db.query(Bill).filter(Bill.bill_date >= month_start).all()
+        monthly_revenue = sum(b.total_amount or 0 for b in month_bills)
+        todays_bills = db.query(Bill).filter(Bill.bill_date == date.today()).all()
+        todays_revenue = sum(b.total_amount or 0 for b in todays_bills)
+        billing_doc = (
+            f"Billing Summary: Today's revenue is Rs.{todays_revenue:.2f} from {len(todays_bills)} bills. "
+            f"This month's revenue so far is Rs.{monthly_revenue:.2f} from {len(month_bills)} bills."
+        )
+        documents.append(billing_doc)
+        metadata.append({"type": "billing_summary", "todays_revenue": todays_revenue, "monthly_revenue": monthly_revenue})
+
         # 4. Add common queries and answers
         faq_data = [
             ("How to check low stock medicines?", "You can view low stock medicines through inventory alerts. Medicines below reorder level are flagged."),

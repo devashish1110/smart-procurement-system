@@ -186,20 +186,59 @@ Respond with JSON format: {{"intent": "category", "confidence": 0.0-1.0}}"""
 
 
 class MockLLMService(LLMService):
-    """Simple mock LLM used for demos when external API is unavailable."""
+    """Simple mock LLM used for demos when external API is unavailable.
+
+    Does not call the Groq client (no self.client), so it overrides every
+    method that would otherwise touch it.
+    """
 
     def __init__(self):
-        # Do not call super().__init__ which initializes the real client
         self.model = os.getenv('MODEL_NAME', 'mock-model')
 
-    def generate_response(self, user_message: str, context: Optional[str] = None, conversation_history: Optional[List[Dict]] = None, system_prompt: Optional[str] = None) -> str:
-        # Return a deterministic, friendly mock response
-        base = "Hello! I'm a demo assistant for the Smart Procurement System."
-        if 'inventory' in user_message.lower():
-            return base + " I can help with inventory queries — e.g., tell me which medicine or vendor details you need."
-        if 'order' in user_message.lower() or 'purchase' in user_message.lower():
-            return base + " I can help create or track purchase orders."
-        return base + " How can I help you today?"
+    def classify_intent(self, user_message: str) -> Dict[str, any]:
+        message_lower = user_message.lower()
+
+        if any(word in message_lower for word in ['stock', 'inventory', 'medicine', 'available', 'expir']):
+            return {"intent": "inventory_query", "confidence": 0.7}
+        elif any(word in message_lower for word in ['order', 'purchase', 'vendor', 'buy', 'procurement']):
+            return {"intent": "procurement", "confidence": 0.7}
+        elif any(word in message_lower for word in ['patient', 'appointment', 'visit']):
+            return {"intent": "patient", "confidence": 0.7}
+        elif any(word in message_lower for word in ['bill', 'payment', 'invoice', 'receipt', 'revenue']):
+            return {"intent": "billing", "confidence": 0.7}
+        elif any(word in message_lower for word in ['report', 'analytics', 'statistics', 'summary']):
+            return {"intent": "reports", "confidence": 0.7}
+        else:
+            return {"intent": "general", "confidence": 0.5}
+
+    def generate_response(
+        self,
+        user_message: str,
+        context: Optional[str] = None,
+        conversation_history: Optional[List[Dict]] = None,
+        system_prompt: Optional[str] = None
+    ) -> str:
+        intent = self.classify_intent(user_message)["intent"]
+
+        # Greetings/general chat have no real data need - FAISS always returns
+        # *some* top-k result regardless of relevance, so skip context for these
+        # rather than showing unrelated vendor/medicine data.
+        if intent != "general" and context and context != "No relevant context found.":
+            lines = [line.split('] ', 1)[-1] for line in context.split('\n') if line.strip()]
+            bullets = '\n'.join(f"- {line}" for line in lines[:3])
+            return f"Based on current data:\n{bullets}"
+
+        fallback_replies = {
+            "inventory_query": "I don't have matching inventory data for that yet, but I can look up specific medicines, stock levels, or expiry dates.",
+            "procurement": "I can help with purchase orders and vendors — try asking about pending orders or vendor details.",
+            "patient": "I can help with patients and appointments — try asking how many appointments are scheduled today.",
+            "billing": "I can help with billing — try asking about today's revenue or outstanding payments.",
+            "reports": "I can help with reports — try asking for a summary of this month's stats.",
+        }
+        return fallback_replies.get(
+            intent,
+            "Hello! I'm a demo assistant for the Smart Procurement System. Ask me about inventory, procurement, patients, billing, or reports."
+        )
 
 
 
