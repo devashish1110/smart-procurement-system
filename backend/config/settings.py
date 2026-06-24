@@ -4,7 +4,7 @@ File: backend/config/settings.py
 """
 
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import List, Optional
 import os
 from dotenv import load_dotenv
 
@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY")
     MODEL_NAME: str = os.getenv("MODEL_NAME", "llama-3.1-8b-instant")
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
+
+    # AWS (optional)
+    AWS_REGION: Optional[str] = None
     
     # WhatsApp
     WHATSAPP_API_TOKEN: str = os.getenv("WHATSAPP_API_TOKEN", "")

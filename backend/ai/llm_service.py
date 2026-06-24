@@ -6,6 +6,7 @@ File: backend/ai/llm_service.py
 from groq import Groq
 from typing import List, Dict, Optional
 import logging
+import os
 
 from backend.config.settings import settings
 
@@ -183,6 +184,25 @@ Respond with JSON format: {{"intent": "category", "confidence": 0.0-1.0}}"""
             return {"intent": "general", "confidence": 0.3}
 
 
+
+class MockLLMService(LLMService):
+    """Simple mock LLM used for demos when external API is unavailable."""
+
+    def __init__(self):
+        # Do not call super().__init__ which initializes the real client
+        self.model = os.getenv('MODEL_NAME', 'mock-model')
+
+    def generate_response(self, user_message: str, context: Optional[str] = None, conversation_history: Optional[List[Dict]] = None, system_prompt: Optional[str] = None) -> str:
+        # Return a deterministic, friendly mock response
+        base = "Hello! I'm a demo assistant for the Smart Procurement System."
+        if 'inventory' in user_message.lower():
+            return base + " I can help with inventory queries — e.g., tell me which medicine or vendor details you need."
+        if 'order' in user_message.lower() or 'purchase' in user_message.lower():
+            return base + " I can help create or track purchase orders."
+        return base + " How can I help you today?"
+
+
+
 # Global LLM service instance
 _llm_service = None
 
@@ -190,8 +210,14 @@ _llm_service = None
 def get_llm_service() -> LLMService:
     """Get or create global LLM service instance"""
     global _llm_service
-    
+    # Allow using a mock LLM during demos or when external API access is blocked
+    use_mock = os.getenv('USE_MOCK_LLM', 'false').lower() == 'true' or getattr(settings, 'USE_MOCK_LLM', False)
+
     if _llm_service is None:
-        _llm_service = LLMService()
+        if use_mock:
+            logger.info('Using MockLLMService (USE_MOCK_LLM=true)')
+            _llm_service = MockLLMService()
+        else:
+            _llm_service = LLMService()
     
     return _llm_service
