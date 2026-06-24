@@ -307,7 +307,7 @@ async def mark_purchase_order_ordered(
 @router.put("/{po_id}/receive", response_model=PurchaseOrderResponse)
 async def receive_purchase_order(
     po_id: int,
-    received_items: List[dict],  # [{"po_item_id": 1, "quantity_received": 50, "batch_number": "BATCH001", "expiry_date": "2025-12-31"}]
+    received_items: List[dict],  # [{"item_id": 1, "quantity_received": 50, "batch_number": "BATCH001", "expiry_date": "2025-12-31"}]
     db: Session = Depends(get_db),
     current_user: User = Depends(require_pharmacist)
 ):
@@ -321,13 +321,13 @@ async def receive_purchase_order(
     ```json
     [
         {
-            "po_item_id": 1,
+            "item_id": 1,
             "quantity_received": 50,
             "batch_number": "BATCH2024001",
             "expiry_date": "2025-12-31"
         },
         {
-            "po_item_id": 2,
+            "item_id": 2,
             "quantity_received": 30,
             "batch_number": "BATCH2024002",
             "expiry_date": "2026-06-30"
@@ -355,7 +355,7 @@ async def receive_purchase_order(
     all_received = True
     for item_data in received_items:
         po_item = db.query(PurchaseOrderItem).filter(
-            PurchaseOrderItem.po_item_id == item_data["po_item_id"]
+            PurchaseOrderItem.item_id == item_data["item_id"]
         ).first()
         
         if not po_item or po_item.po_id != po_id:
@@ -382,7 +382,13 @@ async def receive_purchase_order(
             status="available"
         )
         db.add(new_stock)
-    
+        # Flush one row at a time - batching multiple new InventoryStock
+        # inserts together makes SQLAlchemy use a bulk-insert path that casts
+        # `status` to a native Postgres enum type ("stockstatus") which
+        # doesn't exist here (this DB uses a plain VARCHAR + CHECK constraint
+        # instead of a real enum).
+        db.flush()
+
     # Update PO status
     if all_received:
         po.status = OrderStatus.received

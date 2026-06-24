@@ -294,7 +294,7 @@ class PurchaseOrderItemCreate(PurchaseOrderItemBase):
 
 class PurchaseOrderItemResponse(PurchaseOrderItemBase):
     """PO item response schema"""
-    po_item_id: int
+    item_id: int
     quantity_received: int
     total_price: float
     batch_number: Optional[str] = None

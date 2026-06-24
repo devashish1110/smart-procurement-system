@@ -319,7 +319,7 @@ class PurchaseOrderItem(Base):
     """Individual items in a purchase order"""
     __tablename__ = "purchase_order_items"
     
-    po_item_id = Column(Integer, primary_key=True, index=True)
+    item_id = Column(Integer, primary_key=True, index=True)
     po_id = Column(Integer, ForeignKey("purchase_orders.po_id"), nullable=False)
     medicine_id = Column(Integer, ForeignKey("medicines.medicine_id"), nullable=False)
     quantity_ordered = Column(Integer, nullable=False)
@@ -334,7 +334,7 @@ class PurchaseOrderItem(Base):
     medicine = relationship("Medicine", back_populates="po_items")
     
     def __repr__(self):
-        return f"<PurchaseOrderItem(id={self.po_item_id}, po_id={self.po_id}, medicine_id={self.medicine_id})>"
+        return f"<PurchaseOrderItem(id={self.item_id}, po_id={self.po_id}, medicine_id={self.medicine_id})>"
 
 
 # ============================================
