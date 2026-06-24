@@ -1,0 +1,38 @@
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+*.egg-info/
+
+# Node
+node_modules/
+
+# Logs
+logs/
+*.log
+
+# Build artifacts
+dist/
+dist-ssr/
+build/
+*.local
+
+# Database dumps
+*.sql
+*.dump
+*.db
+*.sqlite3
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
