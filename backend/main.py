@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 import logging
 import time
+import asyncio
 
 from backend.config.settings import settings, validate_settings
 from backend.config.database import check_db_connection
@@ -103,11 +104,21 @@ async def startup_event():
         logger.error(f"✗ Settings validation failed: {e}")
         raise
 
-    if check_db_connection():
-        logger.info("✓ Database connection successful")
-    else:
-        logger.error("✗ Database connection failed")
-        raise Exception("Database connection failed")
+    # Check DB with a timeout — Neon free tier scales to zero and can take
+    # 15-60s to cold-start. Without a timeout this blocks the startup event,
+    # which prevents uvicorn from accepting Render's health-check request,
+    # causing the deploy to time out and fail.
+    try:
+        db_ok = await asyncio.wait_for(
+            asyncio.to_thread(check_db_connection),
+            timeout=15.0
+        )
+        if db_ok:
+            logger.info("✓ Database connection successful")
+        else:
+            logger.warning("⚠ DB check returned false — will connect on first request")
+    except asyncio.TimeoutError:
+        logger.warning("⚠ DB connection timed out (Neon cold-start?) — server starting anyway")
 
     logger.info(f"✓ Server running in {settings.ENVIRONMENT} mode")
     logger.info(f"✓ API Documentation: http://{settings.HOST}:{settings.PORT}/api/{settings.API_VERSION}/docs")
