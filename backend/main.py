@@ -43,11 +43,12 @@ app = FastAPI(
 # MIDDLEWARE CONFIGURATION
 # ============================================
 
-# CORS Middleware
+# CORS Middleware — allow all origins for demo deployment.
+# Auth uses Bearer tokens in headers (not cookies), so credentials=False is safe.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
