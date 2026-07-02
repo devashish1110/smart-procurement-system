@@ -19,14 +19,15 @@ export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(storedToken || null);
   const [loading, setLoading] = useState(true);
 
-  // ✅ On initial mount, verify token if it exists
+  // Only verify token on initial page load (e.g. after a browser refresh).
+  // After login() we already have the user data — no second /auth/me call needed.
   useEffect(() => {
-    if (token) {
+    if (storedToken) {
       checkAuth();
     } else {
       setLoading(false);
     }
-  }, [token]);
+  }, []);
 
   const checkAuth = async () => {
     try {
@@ -51,6 +52,7 @@ export const AuthProvider = ({ children }) => {
 
       setToken(access_token);
       setUser(userData);
+      setLoading(false);
 
       return { success: true };
     } catch (error) {
