@@ -14,7 +14,6 @@ from backend.models.database import User, ChatConversation
 from backend.schemas.schemas import ChatMessage, ChatResponse
 from backend.auth.security import get_current_user
 from backend.ai.chatbot_engine import get_chatbot_engine
-from backend.ai.rag_pipeline import rebuild_knowledge_base
 
 
 router = APIRouter(prefix="/chatbot", tags=["AI Chatbot"])
@@ -202,25 +201,16 @@ async def delete_chat_session(
 async def rebuild_knowledge_base_endpoint(
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Rebuild the chatbot's knowledge base from current database.
-    Call this after major data updates.
-    
-    **Note:** This may take a few seconds to complete.
-    """
+    """Rebuild the chatbot knowledge base (no-op in mock mode)."""
+    import os
+    if os.getenv('USE_MOCK_LLM', 'false').lower() == 'true':
+        return {"message": "Running in mock mode — knowledge base not used", "timestamp": datetime.now()}
     try:
+        from backend.ai.rag_pipeline import rebuild_knowledge_base
         rebuild_knowledge_base()
-        
-        return {
-            "message": "Knowledge base rebuilt successfully",
-            "timestamp": datetime.now()
-        }
-        
+        return {"message": "Knowledge base rebuilt successfully", "timestamp": datetime.now()}
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to rebuild knowledge base: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to rebuild knowledge base: {str(e)}")
 
 
 @router.get("/stats")
@@ -282,34 +272,27 @@ async def get_chatbot_statistics(
 
 @router.get("/health")
 async def chatbot_health_check():
-    """
-    Check if chatbot services are running properly.
-    
-    **Returns:**
-    - Status of LLM service
-    - Status of RAG pipeline
-    - Status of embedding generator
-    """
+    """Check if chatbot services are running properly."""
+    import os
+    use_mock = os.getenv('USE_MOCK_LLM', 'false').lower() == 'true'
+    if use_mock:
+        return {
+            "status": "healthy",
+            "mode": "mock",
+            "llm_service": "operational",
+            "rag_pipeline": "disabled (mock mode)",
+        }
     try:
         from backend.ai.llm_service import get_llm_service
         from backend.ai.rag_pipeline import get_rag_pipeline
-        from backend.ai.embeddings import get_embedding_generator
-        
-        # Check services
         llm_service = get_llm_service()
         rag_pipeline = get_rag_pipeline()
-        embedding_gen = get_embedding_generator()
-        
         return {
             "status": "healthy",
+            "mode": "llm",
             "llm_service": "operational",
             "rag_pipeline": "operational",
-            "embedding_generator": "operational",
             "knowledge_base_docs": len(rag_pipeline.documents) if rag_pipeline.documents else 0
         }
-        
     except Exception as e:
-        return {
-            "status": "unhealthy",
-            "error": str(e)
-        }
+        return {"status": "unhealthy", "error": str(e)}
