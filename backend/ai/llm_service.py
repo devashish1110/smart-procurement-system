@@ -220,24 +220,19 @@ class MockLLMService(LLMService):
     ) -> str:
         intent = self.classify_intent(user_message)["intent"]
 
-        # Greetings/general chat have no real data need - FAISS always returns
-        # *some* top-k result regardless of relevance, so skip context for these
-        # rather than showing unrelated vendor/medicine data.
-        if intent != "general" and context and context != "No relevant context found.":
-            lines = [line.split('] ', 1)[-1] for line in context.split('\n') if line.strip()]
-            bullets = '\n'.join(f"- {line}" for line in lines[:3])
-            return f"Based on current data:\n{bullets}"
+        if intent != "general" and context and context not in ("No relevant context found.", ""):
+            return f"Here's the latest data:\n{context}"
 
         fallback_replies = {
-            "inventory_query": "I don't have matching inventory data for that yet, but I can look up specific medicines, stock levels, or expiry dates.",
-            "procurement": "I can help with purchase orders and vendors — try asking about pending orders or vendor details.",
-            "patient": "I can help with patients and appointments — try asking how many appointments are scheduled today.",
-            "billing": "I can help with billing — try asking about today's revenue or outstanding payments.",
-            "reports": "I can help with reports — try asking for a summary of this month's stats.",
+            "inventory_query": "Ask me something like: 'How many medicines are low in stock?' or 'Any expiring items?'",
+            "procurement": "Ask me something like: 'How many pending purchase orders?' or 'Any orders awaiting delivery?'",
+            "patient": "Ask me something like: 'How many patients do we have?' or 'Any appointments today?'",
+            "billing": "Ask me something like: 'What is today's revenue?' or 'How many bills this month?'",
+            "reports": "Ask me something like: 'Give me a summary of this month's performance.'",
         }
         return fallback_replies.get(
             intent,
-            "Hello! I'm a demo assistant for the Smart Procurement System. Ask me about inventory, procurement, patients, billing, or reports."
+            "Hi! I'm the Smart Procurement assistant. Try asking about inventory stock, purchase orders, patient appointments, billing revenue, or reports."
         )
 
 

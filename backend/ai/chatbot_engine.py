@@ -8,8 +8,8 @@ import logging
 from datetime import datetime
 from sqlalchemy.orm import Session
 
+import os
 from backend.ai.llm_service import get_llm_service
-from backend.ai.rag_pipeline import get_rag_pipeline
 from backend.models.database import ChatConversation, User
 from backend.config.database import get_db_context
 
@@ -22,8 +22,16 @@ class ChatbotEngine:
     def __init__(self):
         """Initialize chatbot engine"""
         self.llm_service = get_llm_service()
-        self.rag_pipeline = get_rag_pipeline()
-        logger.info("✓ Chatbot Engine initialized")
+        self.use_mock = os.getenv('USE_MOCK_LLM', 'false').lower() == 'true'
+        if self.use_mock:
+            # Skip torch/FAISS in mock mode — free-tier Render has only 512MB RAM
+            # and loading sentence-transformers would OOM-kill the process.
+            self.rag_pipeline = None
+            logger.info("✓ Chatbot Engine initialized (mock mode, RAG disabled)")
+        else:
+            from backend.ai.rag_pipeline import get_rag_pipeline
+            self.rag_pipeline = get_rag_pipeline()
+            logger.info("✓ Chatbot Engine initialized")
     
     def process_message(
         self,
@@ -52,8 +60,11 @@ class ChatbotEngine:
             
             logger.info(f"Intent classified: {intent} (confidence: {confidence})")
             
-            # 2. Get relevant context from RAG
-            context = self.rag_pipeline.get_context(user_message, top_k=3)
+            # 2. Get relevant context
+            if self.use_mock:
+                context = self._get_db_context(intent, db)
+            else:
+                context = self.rag_pipeline.get_context(user_message, top_k=3)
             
             # 3. Get conversation history
             conversation_history = self._get_conversation_history(session_id, db)
@@ -108,6 +119,44 @@ class ChatbotEngine:
                 "timestamp": datetime.now()
             }
     
+    def _get_db_context(self, intent: str, db: Session) -> str:
+        """Query DB directly for live data — used in mock mode instead of RAG/torch."""
+        from datetime import date, timedelta
+        from backend.models.database import InventoryStock, Medicine, PurchaseOrder, Appointment, Bill, Patient
+        try:
+            if intent == "inventory_query":
+                low = db.query(InventoryStock).filter(InventoryStock.status == 'low_stock').count()
+                expiring = db.query(InventoryStock).filter(
+                    InventoryStock.expiry_date <= date.today() + timedelta(days=30),
+                    InventoryStock.expiry_date >= date.today(),
+                    InventoryStock.quantity_available > 0
+                ).count()
+                total = db.query(Medicine).filter(Medicine.is_active == True).count()
+                return f"{low} medicines are low in stock, {expiring} batches expiring within 30 days, {total} active medicines in catalog."
+            elif intent == "procurement":
+                pending = db.query(PurchaseOrder).filter(PurchaseOrder.status.in_(['approved', 'ordered'])).count()
+                draft = db.query(PurchaseOrder).filter(PurchaseOrder.status == 'draft').count()
+                return f"{pending} purchase orders pending (approved/ordered, awaiting delivery), {draft} in draft."
+            elif intent == "patient":
+                total = db.query(Patient).count()
+                today = db.query(Appointment).filter(Appointment.appointment_date == date.today()).count()
+                return f"{total} patients registered. {today} appointments scheduled for today."
+            elif intent == "billing":
+                today_bills = db.query(Bill).filter(Bill.bill_date == date.today()).all()
+                month_bills = db.query(Bill).filter(Bill.bill_date >= date.today().replace(day=1)).all()
+                return (f"Today: ₹{sum(b.total_amount or 0 for b in today_bills):.2f} from {len(today_bills)} bills. "
+                        f"This month: ₹{sum(b.total_amount or 0 for b in month_bills):.2f} from {len(month_bills)} bills.")
+            elif intent == "reports":
+                month_bills = db.query(Bill).filter(Bill.bill_date >= date.today().replace(day=1)).all()
+                low = db.query(InventoryStock).filter(InventoryStock.status == 'low_stock').count()
+                pending = db.query(PurchaseOrder).filter(PurchaseOrder.status.in_(['approved', 'ordered'])).count()
+                return (f"This month's revenue: ₹{sum(b.total_amount or 0 for b in month_bills):.2f}. "
+                        f"Low stock items: {low}. Pending purchase orders: {pending}.")
+            return ""
+        except Exception as e:
+            logger.error(f"DB context error: {e}")
+            return ""
+
     def _get_conversation_history(
         self,
         session_id: str,
