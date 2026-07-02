@@ -5,7 +5,7 @@ import axios from 'axios';
 // proxies to localhost:8000 (see vite.config.js). In production (Vercel),
 // there is no such proxy, so VITE_API_URL must point at the deployed backend.
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api/v1',
+  baseURL: import.meta.env.VITE_API_URL || 'https://smart-procurement-system-rm4f.onrender.com/api/v1',
   headers: {
     'Content-Type': 'application/json',
   },
