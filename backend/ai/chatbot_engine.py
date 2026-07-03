@@ -23,15 +23,11 @@ class ChatbotEngine:
         """Initialize chatbot engine"""
         self.llm_service = get_llm_service()
         self.use_mock = os.getenv('USE_MOCK_LLM', 'false').lower() == 'true'
-        if self.use_mock:
-            # Skip torch/FAISS in mock mode — free-tier Render has only 512MB RAM
-            # and loading sentence-transformers would OOM-kill the process.
-            self.rag_pipeline = None
-            logger.info("✓ Chatbot Engine initialized (mock mode, RAG disabled)")
-        else:
-            from backend.ai.rag_pipeline import get_rag_pipeline
-            self.rag_pipeline = get_rag_pipeline()
-            logger.info("✓ Chatbot Engine initialized")
+        # Never load RAG/torch — Render free tier has 512MB RAM and torch needs 2GB+.
+        # Both mock and Groq modes use direct DB queries for context instead.
+        self.rag_pipeline = None
+        mode = "mock" if self.use_mock else "groq+db-context"
+        logger.info(f"✓ Chatbot Engine initialized ({mode})")
     
     def process_message(
         self,
@@ -60,11 +56,8 @@ class ChatbotEngine:
             
             logger.info(f"Intent classified: {intent} (confidence: {confidence})")
             
-            # 2. Get relevant context
-            if self.use_mock:
-                context = self._get_db_context(intent, db)
-            else:
-                context = self.rag_pipeline.get_context(user_message, top_k=3)
+            # 2. Get live context directly from DB (no RAG/torch in either mode)
+            context = self._get_db_context(intent, db)
             
             # 3. Get conversation history
             conversation_history = self._get_conversation_history(session_id, db)
